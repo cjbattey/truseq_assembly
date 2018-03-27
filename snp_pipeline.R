@@ -1,6 +1,7 @@
 #truseq resequencing SNP calling pipeline
 setwd("/media/burke/bigMac/cj/")
-library(magrittr);library(ggplot2)
+library(magrittr);library(ggplot2);library(foreach);library(doMC)
+registerDoMC(cores=8)
 
 #######################################################################################
 # setup: you'll need R, java (v1.8), samtools, picard tools, gatk, and AdapterRemoval #
@@ -21,6 +22,8 @@ for(i in 1:40){
 for(i in commands){
   system(i)
 }
+
+#foreach(i=commands) %dopar% system(i) #untested parallel version
 
 ################################################################
 # align trimmed reads to the C. anna reference using bowtie2 ###
@@ -48,6 +51,7 @@ for(i in 1:40){
 for(i in 1:40){
   system(commands[i])
 }
+#foreach(i=commands) %dopar% system(i) #untested parallel version
 
 ################################################################
 # mark duplicates, sort, and index BAM files ###################
@@ -68,9 +72,10 @@ for(i in 1:40){
 for(i in 1:40){
   system(commands[i])
 }
+#foreach(i=commands) %dopar% system(i) #untested parallel version
 
 ##############################################################################################
-# add readgroup info to BAM files (this is gatk bullshit - switch to bwa to avoid?)  #########
+# add readgroup info to BAM files (this is gatk bullshit - switch to bwa to avoid? may not be necessary for angsd)  #########
 setwd("/media/burke/bigMac/cj/selasphorus_assembly/")
 bam <- list.files("dedup",full.names=T)
 commands <- c()
@@ -94,6 +99,7 @@ for(i in 1:40){
 for(i in 2:40){
   system(commands[i])
 }
+#foreach(i=commands) %dopar% system(i) #untested parallel version
 
 ################################################################
 # call SNP's from BAM files ####################################
@@ -143,7 +149,7 @@ system("java -Xmx40g -jar /media/burke/bigMac/Dropbox/tools/GenomeAnalysisTK.jar
 -o selasphorus.vcf
 ")
 
-#note I abandoned gatk and switched to angsd here, but the above should work
+#note I abandoned gatk and switched to angsd here, but the above should still work to generate static calls with no filters
 ################################################################
 # apply additional filters in vcftools #########################
 
