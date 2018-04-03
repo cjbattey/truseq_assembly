@@ -3,19 +3,23 @@ setwd("/media/burke/bigMac/cj/")
 library(magrittr);library(ggplot2);library(foreach);library(doMC)
 registerDoMC(cores=8)
 
-#######################################################################################
-# setup: you'll need R, java (v1.8), samtools, picard tools, gatk, and AdapterRemoval #
-# Budget around 5x the initial download size for hard drive space
+################################################################################################
+# setup: you'll need R, java (v1.8), samtools, picard tools, gatk, AdapterRemoval, and bowtie2 #
+# Budget around 5x the initial download size for hard drive space.
+# Always look at the commands object before running the system() loops, and triple check file paths to prevent overwrites!
+# Better yet, go ahead and run system(commands[1]) to see if the first iteration works on your system before executing the loop. 
+# If (when) you realize something is broken after starting the system() loop, force quit Rstudio, run "top -o %CPU" in terminal, 
+# and kill zombie processes manually with the "kill" or "killall" commands. 
 
 ######################################################################################################
 #run AdapterRemoval to trim adapters, merge overlapping paired reads, and drop low-quality base calls#
-R1 <- list.files("demultiplexed_reads",full.names=T) %>% grep("R1_001",.,value=T)
+R1 <- list.files("demultiplexed_reads",full.names=T) %>% grep("R1_001",.,value=T) #assuming naming conventions from Berkeley VJC sequencing center
 R2 <- list.files("demultiplexed_reads",full.names=T) %>% grep("R2_001",.,value=T)
 commands <- c()
 for(i in 1:40){
   commands[i] <- paste0("AdapterRemoval --file1 ",R1[i],
                         " --file2 ",R2[i],
-                        " --basename trimmed/", R1[i] %>% basename() %>% strsplit("_") %>% unlist() %>% .[1],
+                        " --basename trimmed/", R1[i] %>% basename() %>% strsplit("_") %>% unlist() %>% .[1], #edit this line for your file naming/directory scheme before running on new data
                         " --trimns --trimqualities --collapse --threads 30")
 }
 
@@ -23,11 +27,10 @@ for(i in commands){
   system(i)
 }
 
-#foreach(i=commands) %dopar% system(i) #untested parallel version
-
 ################################################################
 # align trimmed reads to the C. anna reference using bowtie2 ###
 # ANHU genome: https://www.ncbi.nlm.nih.gov/Traces/wgs/?val=MUGM01#
+# remember to index the reference genome with bowtie2-build before running this section #
 R1 <- list.files("selasphorus_assembly/trimmed",full.names=T) %>% grep("pair1",.,value=T)
 R2 <- list.files("selasphorus_assembly/trimmed",full.names=T) %>% grep("pair2",.,value=T)
 commands <- c()
@@ -35,7 +38,7 @@ for(i in 1:40){
   sampleID <- basename(R1[i]) %>% strsplit("\\.") %>% unlist() %>% .[1]
   commands[i] <- paste0("bowtie2",
                         " -p 30",
-                        " -x /media/burke/bigMac/cj/anhu_alignment/Canna",
+                        " -x /media/burke/bigMac/cj/anhu_alignment/Canna",   #here Canna is the prefix for the bowtie2 indices produced by "bowtie2-build"
                         " -1 ",R1[i],
                         " -2 ",R2[i],
                         " -S ","/media/burke/bigMac/cj/selasphorus_assembly/bam/",sampleID,".sam;",
@@ -51,15 +54,14 @@ for(i in 1:40){
 for(i in 1:40){
   system(commands[i])
 }
-#foreach(i=commands) %dopar% system(i) #untested parallel version
 
 ################################################################
-# mark duplicates, sort, and index BAM files ###################
+# sort and index BAM files #####################################
 setwd("/media/burke/bigMac/cj/selasphorus_assembly/")
 bam <- list.files("bam",full.names=T)
 commands <- c()
 for(i in 1:40){
-  sampleID <- basename(bam[i]) %>% strsplit("\\.") %>% unlist() %>% .[1]
+  sampleID <- basename(bam[i]) %>% strsplit("\\.") %>% unlist() %>% .[1] #check this line for your sample ID scheme
   commands[i] <- paste0("samtools sort -@ 30 ",bam[i]," tmp;",
                         " mv tmp.bam ",bam[i],"; ",
                         " samtools index ",bam[i],";",
